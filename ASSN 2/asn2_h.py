@@ -304,7 +304,7 @@ class controller():
 
     def planning(self, map, start, end):
         map.setCost(end[0], end[1], 1)
-        neighbor_queue = [[end[0], end[1]], 1]
+        neighbor_queue = [[[end[0], end[1]], 1]]
 
         self.set_costs(neighbor_queue, map, start)
         map.printCostMap()
@@ -313,7 +313,7 @@ class controller():
         while (not (curr[0] == end[0] and curr[1] == end[1])):
             dir = 1
             min = 1000
-            for x in range(3):
+            for x in range(4):
                 curr_cost = map.getNeighborCost(curr[0], curr[1], x+1)
                 if (curr_cost != 0 and curr_cost < min):
                     dir = x+1
@@ -334,9 +334,9 @@ class controller():
         distance_from_end = curr_element[1]
         if (not (curr[0] == start[0] and curr[1] == start[1])):
             distance_from_end += 1
-            for x in range (3):
+            for x in range (4):
                 if(map.getNeighborObstacle(curr[0], curr[1], x+1) == 0):
-                    if (map.getNeighborCost(curr[0], curr[1], x+1) != 0 and distance_from_end < map.getNeighborCost(curr[0], curr[1], x+1)):
+                    if (map.getNeighborCost(curr[0], curr[1], x+1) == 0):
                         map.setNeighborCost(curr[0], curr[1], x+1, distance_from_end)
                         neighbor_queue.append([self.next_loc(curr[0], curr[1], x+1), distance_from_end])
                 #else 
@@ -348,7 +348,7 @@ class controller():
         # stop when you have gotten to the start
         # now trace back to the goal by choosing lowest value spots
         # yay.
-    def next_loc(i, j, dir):
+    def next_loc(self, i, j, dir):
         end_i = i
         end_j = j
         if (dir == 1):
@@ -359,7 +359,7 @@ class controller():
             end_i += 1
         if (dir == 4):
             end_i -= 1
-        return [i, j]
+        return [end_i, end_j]
 
     def turn(self, turn_count):
         if (turn_count > 0):
@@ -393,7 +393,7 @@ class controller():
         turn_count = 0
         while(test_dir != dir_next):
             if (test_dir < 4):
-                test_dir + 1
+                test_dir += 1
             else:
                 test_dir = 1
             turn_count += 1
