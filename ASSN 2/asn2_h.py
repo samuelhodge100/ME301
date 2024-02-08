@@ -302,12 +302,12 @@ class controller():
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512, 512, 512, 512))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
 
-    def planning(self, start, end):
-        map = map.EECSMap()
+    def planning(self, map, start, end):
         map.setCost(end[0], end[1], 1)
         neighbor_queue = [[end[0], end[1]], 1]
 
         self.set_costs(neighbor_queue, map, start)
+        map.printCostMap()
         #actually tell thing to move
         curr = start
         while (not (curr[0] == end[0] and curr[1] == end[1])):
