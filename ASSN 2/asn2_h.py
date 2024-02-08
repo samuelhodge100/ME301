@@ -304,8 +304,9 @@ class controller():
 
     def planning(self, start, end):
         map = map.EECSMap()
-        neighbor_queue = [[end[0], end[1]], 0]
-        distance_from_end = 0
+        map.setCost(end[0], end[1], 1)
+        neighbor_queue = [[end[0], end[1]], 1]
+
         self.set_costs(neighbor_queue, map, start)
         #actually tell thing to move
         curr = start
@@ -316,7 +317,7 @@ class controller():
                 curr_cost = map.getNeighborCost(curr[0], curr[1], x+1)
                 if (curr_cost != 0 and curr_cost < min):
                     dir = x+1
-                    min = corr_cost
+                    min = curr_cost
             self.move(curr[2], dir)
             next_loc = self.next_loc(curr[0], curr[1], dir)
             curr = [next_loc[0], next_loc[1], dir]
