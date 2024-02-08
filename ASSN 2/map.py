@@ -380,7 +380,7 @@ class EECSMap():
         for i in range(8):
             for j in range(8):
                 sys.stdout.write(str(self.costMap[i][j]))
-                sys.stdout.write(" ")
+                sys.stdout.write("\t")
 
             print (" ")
 
