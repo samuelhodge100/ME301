@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import roslib
 import rospy
+import numpy as np
 from fw_wrapper.srv import *
 from map import *
 
@@ -270,7 +271,7 @@ class controller():
         encoder_speeds.append(getMotorWheelSpeed(6))
         encoder_speeds.append(getMotorWheelSpeed(7))
         encoder_speeds.append(getMotorWheelSpeed(8))
-        self.odometry(encoder_speeds,self.state)
+        #self.odometry(encoder_speeds,self.state)
 
         #motor_speed = getMotorWheelSpeed(7)
         #motor_position = getMotorPositionCommand(7)
@@ -280,8 +281,13 @@ class controller():
         
     def walk_forward_n_units(self, n):
         self.walk_forward()
-        rospy.sleep(1.61)
+        rospy.sleep(1.60)
+        response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
+        #if(self.scan_front()>2500):
+            #response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023+830, 923, 1023+830, 923))
+            #rospy.sleep(0.2)
         for x in range(n-1):
+            self.walk_forward()
             rospy.sleep(1.55)
             rospy.loginfo("walk forward one more unit")
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
@@ -290,6 +296,39 @@ class controller():
         self.walk_forward()
         for x in range(n-1):
             response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
+
+    def recorded_wheel_speed_to_linear_velocity(self):
+        #y=0.0268x +0.1079
+        motor_speed_5 = getMotorWheelSpeed(5) 
+        motor_speed_6 = getMotorWheelSpeed(6) 
+        motor_speed_7 = getMotorWheelSpeed(7)
+        motor_speed_8 = getMotorWheelSpeed(8) 
+        motor_speeds = np.array([motor_speed_5,motor_speed_6,motor_speed_7,motor_speed_8])
+        print("Recorded  Wheel Speeds:")
+        print(motor_speeds)
+        
+        motor_speeds = np.array([[motor_speed_5,motor_speed_6-1023, motor_speed_7,motor_speed_8-1023]]) * 0.0268 + 0.1079
+        print("Linear Wheel Speeds:")
+        print(motor_speeds)
+        print('\n')
+
+        # If moving linearly:
+        del_index = []
+        for i in range(len(motor_speeds)):
+            if motor_speeds[i] > 20:
+                del_index.append(i)
+        
+        for i in del_index:
+            np.remove(motor_speeds,i)
+        
+        if (len(motor_speeds)> 0):
+            return np.average(motor_speeds)
+        else:
+            print("NO GOOD DATA BAD!")
+            return 0
+
+
+
         
 
     
@@ -312,7 +351,7 @@ class controller():
     def turn_left(self):
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512+112, 512-112, 512-112, 512+112))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023+930, 1023+930, 1023+930, 1023+930))
-        rospy.sleep(0.64)
+        rospy.sleep(0.71)
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512, 512, 512, 512))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
 
@@ -426,21 +465,57 @@ class controller():
             turn_count = -1
         return turn_count
 
-    def odometry(self,encoder_speeds,state):
-        # Need some filtering or transformation to real world
-        # Need some dt
+    def odometry(self, forward_vel, W, R, dt):
+    # Inputs:
+    # W is the angular velocity of the COM about the turning point
+    # R is the radius from the COM to the the turning point
+    # dt is the time span in which the control loop functions
+    # Need the current state of the robot [x,y,theta] have stored in the class
+    # The updates to the current state
 
-        change_in_positions = [encoder_speed*dt for encoder_speed in encoder_speeds]
+        if R==0:
+            # Moving straight (based on orientation tho)
+            self.theta += 0
+            self.x += np.cos(self.theta)*forward_vel*dt
+            self.y += np.sin(self.theta)*forward_vel*dt
 
-        # Check that the change in positions make sense" Maybe use a controller to e
+            pass
+        else:
+            # Turning
+            self.theta += W * dt
+            
+            # Use the change in and the radius to compute the change in x and y
+            self.x += np.cos(self.theta)*linear_velocity_in_x*dt
+            self.y += np.sin(self.theta)*linear_velocity_in_y*dt
+
 
     def mapping(self):
-        pass
-            
-    #algorithm for planning
-            
-
-    #way to get input for planning from command line
+        start = [0, 0, 3]
+        #somehow keep track of places the robot has been
+        curr = start
+        map = EECSMap()
+        map.clearObstacleMap()
+        #look around left forward and right
+        left_value,front_value,right_value = self.full_scan()
+        #add obstacles
+        obstacle_threshold = 2000
+        if(left_value > obstacle_threshold):
+            dir = curr[2]
+            if(curr[2] > 1):
+                dir = curr[2] - 1
+            else:
+                dir = 4
+            map.setObstacle(curr[0], curr[1], 1, dir)
+        if(front_value > obstacle_threshold):
+            map.setObstacle(curr[0], curr[1], 1, curr[2])
+        if(right_value > obstacle_threshold):
+            dir = curr[2]
+            if(curr[2] < 4):
+                dir = curr[2] + 1
+            else:
+                dir = 1
+            map.setObstacle(curr[0], curr[1], 1, dir)
+        #go in first direction that it can go
 
 '''
     def move_one_unit(self):
@@ -474,8 +549,8 @@ if __name__ == "__main__":
     rospy.init_node('example_node', anonymous=True)
     rospy.loginfo("Starting Group X Control Node...")
 
-    # control loop running at 10hz
-    r = rospy.Rate(1000) # 10hz
+    # control loop running at 1000hz
+    r = rospy.Rate(1000) # 1000hz
     dms_port = 6
     # ir_port = 2
     dms_value_threshold = 600
@@ -483,15 +558,24 @@ if __name__ == "__main__":
     dt = 0
 
     control = controller()
+
     map = EECSMap()
     map.printObstacleMap()
+    
     i_start = int(input("What is start_i?"))
     j_start = int(input("What is start_j?"))
     dir_start = int(input("What is start_dir?"))
     i_end = int(input("What is end_i?"))
     j_end = int(input("What is end_j?"))
     dir_end = int(input("What is end_dir?"))
-    control.planning(map, [i_start, j_start, dir_start], [i_end, j_end, dir_end])                                
+    control.planning(map, [i_start, j_start, dir_start], [i_end, j_end, dir_end]) 
+    
+    '''
+    response = setMotorWheelSpeed(5,1023)
+    response = setMotorWheelSpeed(6,1023+930)
+    response = setMotorWheelSpeed(7,1023)
+    response = setMotorWheelSpeed(8,1023+930)
+    '''
     #control.planning(map, [0, 0, 3], [4, 4, 3])
     #control.move_test(2, 2, 3)
     #control.turn_left()
@@ -502,8 +586,11 @@ if __name__ == "__main__":
     #motor_speed = getMotorWheelSpeed(7)
     #motor_position = getMotorPositionCommand(7)
     #rospy.loginfo("Motor 7 Wheel speed: %d\nMotor 7 position: %d\nMotor response %d",motor_speed, motor_position,response)
-
+    #dt = 0
     while not rospy.is_shutdown():
-       
-
+        #forward_vel = control.recorded_wheel_speed_to_linear_velocity()
+        #control.odometry(forward_vel,R=0,W=0,dt=dt)
         r.sleep()
+        #dt = 0.001
+        #print(dt)
+ 
