@@ -495,6 +495,5 @@ if __name__ == "__main__":
     #rospy.loginfo("Motor 7 Wheel speed: %d\nMotor 7 position: %d\nMotor response %d",motor_speed, motor_position,response)
 
     while not rospy.is_shutdown():
-       
 
         r.sleep()
