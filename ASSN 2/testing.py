@@ -1,5 +1,6 @@
 import map
 from map import DIRECTION
+import numpy as np
 
 DIR = {'North':1,'East':2,'South':3,'West':4}
 DIR_INV = {1:'North', 2:'East', 3:'South', 4:'West'}
@@ -47,7 +48,14 @@ def set_costs(neighbor_queue, map, start):
                 if (map.getNeighborCost(curr[0], curr[1], x+1) == 0):
                     map.setNeighborCost(curr[0], curr[1], x+1, distance_from_end)
                     neighbor_queue.append([next_loc(curr[0], curr[1], x+1), distance_from_end])
-            #else 
+                    print(f'Cost {distance_from_end} set at position {curr}')
+                else: 
+                    print(f'There is a cost at position {map_move(curr,x+1)}')
+            else:
+                print(f'There is an obsticle to the {DIR_INV[x+1]} at position {curr}')
+        map.printObstacleMap()
+        map.printCostMap()
+                    
     if(len(neighbor_queue)>0):
         set_costs(neighbor_queue, map, start)
         # create a structure with al points of grid
@@ -66,7 +74,7 @@ def next_loc(i, j, dir):
     if (dir == 3):
         end_i += 1
     if (dir == 4):
-        end_i -= 1
+        end_j -= 1
     return [end_i, end_j]
 
 def turn(turn_count):
@@ -163,5 +171,86 @@ map.printObstacleMap()
 map.printCostMap()
 
 #waveform_planning(map,[0,0],[7,7])
-planning(map, [0,0,3], [1,1,1])
+planning(map, [0,0,3], [7,7,1])
 
+
+
+def front_and_rear_steering(R,max_wheel_speed):
+    # R is the radius of turning horizontally from the center of mass (positive value indicates right turn) in centimeters
+    # max_wheel_speed is inputted velocity of the outter wheels as they rotate about the center of rotation TODO: MAKE SURE THE INPUTTED VELOCITIES ARE IN CENTIMETERS PER SECOND
+    # Theta defined from vertical axis positive use right hand rule for positive angles
+
+    # Returns a list of [wheel velocities, wheel angles]
+
+    # Define some constants TODO: UPDATE THESE WITH PROPER VALUES
+    x0 = 12 # Horizontal distance to center of wheels in centimeters
+    y0 = 20 # Vertical distance to the center of wheels in centimeters
+
+    # R = 0 indicates forward or reverse motion
+
+    if R == 0:
+        # walk forward or backward using the max_wheel_speed as linear velocity
+        pass
+        # return [[phi_dot_right,phi_dot_left],[theta_right_front,theta_left_front,theta_right_back,theta_left_back]]
+    else:
+        # Compute other wheel speed and generic angles:
+        phi_undecided = (np.sqrt((abs(R)+x0)**2+y0**2)/np.sqrt((abs(R)-x0)**2)+y0**2)* max_wheel_speed
+        theta_undecided_inner = np.arctan(y0/(abs(R)-x0))
+        theta_undecided_outter = np.arctan(y0/(abs(R)+x0))
+        omega = max_wheel_speed * (abs(R)+x0)
+        # Compute odometry for the center of mass
+
+        if R > 0:
+            # Right turn
+            phi_dot_right = phi_undecided
+            phi_dot_left = max_wheel_speed
+            theta_right_front = theta_undecided_inner
+            theta_left_front = theta_undecided_outter
+            theta_right_back = -theta_undecided_inner
+            theta_left_back =  -theta_undecided_outter
+            return [[phi_dot_right,phi_dot_left],[theta_right_front,theta_left_front,theta_right_back,theta_left_back]]
+    
+        else:
+            # Left Turn
+            phi_dot_right = max_wheel_speed
+            phi_dot_left = phi_undecided
+            theta_right_front = theta_undecided_outter
+            theta_left_front = theta_undecided_inner
+            theta_right_back = -theta_undecided_outter
+            theta_left_back =  -theta_undecided_inner
+            return [[phi_dot_right,phi_dot_left],[theta_right_front,theta_left_front,theta_right_back,theta_left_back]]
+
+
+def odometry(W, R, dt):
+    # Inputs:
+    # W is the angular velocity of the COM about the turning point
+    # R is the radius from the COM to the the turning point
+    # dt is the time span in which the control loop functions
+    # Need the current state of the robot [x,y,theta] have stored in the class
+    # The updates to the current state
+
+    if R==0:
+        # Moving straight (based on orientation tho)
+        self.state.theta += 0
+        self.state.x += np.cos(self.state.theta)*forward_vel*dt
+        self.state.y += np.sin(self.state.theta)*forward_vel*dt
+
+        pass
+    else:
+        # Turning
+        self.state.theta += W * dt
+        
+        # Use the change in and the radius to compute the change in x and y
+        self.state.x += np.cos(self.state.theta)*linear_velocity_in_x*dt
+        self.state.y += np.sin(self.state.theta)*linear_velocity_in_y*dt
+
+        
+def path_control(map):
+    # Inputs 
+    # map: the obsticle map
+    
+    # Step one: Given where you are in the map. What sensor values should you be reading
+    # Step two: update postion in the world based on sensor vals
+    # Step three: Make corrections to robot position
+
+    pass
