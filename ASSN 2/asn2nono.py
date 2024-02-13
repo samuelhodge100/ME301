@@ -289,7 +289,7 @@ class controller():
     def walk_forward_n_units_odom(self, n):
         self.walk_forward()
         for x in range(n-1):
-        response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
+            response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
         
 
     
@@ -434,6 +434,8 @@ class controller():
 
         # Check that the change in positions make sense" Maybe use a controller to e
 
+    def mapping(self):
+        pass
             
     #algorithm for planning
             
@@ -483,7 +485,14 @@ if __name__ == "__main__":
     control = controller()
     map = EECSMap()
     map.printObstacleMap()
-    control.planning(map, [0, 0, 3], [4, 4, 3])
+    i_start = int(input("What is start_i?"))
+    j_start = int(input("What is start_j?"))
+    dir_start = int(input("What is start_dir?"))
+    i_end = int(input("What is end_i?"))
+    j_end = int(input("What is end_j?"))
+    dir_end = int(input("What is end_dir?"))
+    control.planning(map, [i_start, j_start, dir_start], [i_end, j_end, dir_end])                                
+    #control.planning(map, [0, 0, 3], [4, 4, 3])
     #control.move_test(2, 2, 3)
     #control.turn_left()
     #control.home()
