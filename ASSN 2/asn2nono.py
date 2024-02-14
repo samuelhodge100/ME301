@@ -160,9 +160,13 @@ class controller():
         self.Ki = Ki
         self.I = 0
         self.dms_port = 6
-        self.dt = 1/10000 # Loop enforced at 10 kHz may need to actually measure 
+        self.dt = 1/10000 # Loop enforced at 10 kHz may need to actually measure as enforement only occurs when loop is faster.
         self.sleep_time = 0.1
-        self.state = [0,0,0] # starting location for the robot [x,y,theta]
+        # Initial position of the robot
+        self.theta = 0
+        self.x = 0
+        self.y = 0
+        
         # Intitial Motor Config
 
         # Set Motor Modes
@@ -184,11 +188,6 @@ class controller():
         response = setMotorWheelSpeed(8,0)
 
         rospy.sleep(0.5)
-
-
-
-        
-
 
     def wall_follow(self, threshold = 40, DMS_SENSOR_REF = 1000):
         # General PID Controller Scheme
@@ -228,7 +227,6 @@ class controller():
             rospy.loginfo("Robot turning right")
             self.turn_90_right()
 
-
     def full_scan(self):
         left_value = self.scan_left(100)
         rospy.sleep(self.sleep_time)
@@ -240,10 +238,12 @@ class controller():
         rospy.sleep(self.sleep_time * 2)
         return left_value,front_value,right_value
     
-
     def scan_left(self,deg):
-        response = setMotorTargetPositionCommand(10, theta_to_encoder(deg,10))
-        rospy.sleep(self.sleep_time*5)
+        # Assuming that once the motor achieves the commanded motor position it will return true
+        # TODO: Need to check this assumption, and integrate into the other scan functions
+        response = 0
+        while(not response):
+            response = setMotorTargetPositionCommand(10, theta_to_encoder(deg,10))
         dms_sensor_reading = getSensorValue(self.dms_port)
         rospy.loginfo("Sensor value at port %d: %f", self.dms_port, dms_sensor_reading)
 
@@ -303,35 +303,28 @@ class controller():
         motor_speed_6 = getMotorWheelSpeed(6) 
         motor_speed_7 = getMotorWheelSpeed(7)
         motor_speed_8 = getMotorWheelSpeed(8) 
-        motor_speeds = np.array([motor_speed_5,motor_speed_6,motor_speed_7,motor_speed_8])
-        print("Recorded  Wheel Speeds:")
-        print(motor_speeds)
-        
-        motor_speeds = np.array([[motor_speed_5,motor_speed_6-1023, motor_speed_7,motor_speed_8-1023]]) * 0.0268 + 0.1079
+        motor_speeds = np.array([motor_speed_5,motor_speed_6-1023, motor_speed_7,motor_speed_8-1023]) * 0.0268 + 0.1079
         print("Linear Wheel Speeds:")
         print(motor_speeds)
         print('\n')
 
         # If moving linearly:
-        del_index = []
+        N = 0
+        avg = 0
         for i in range(len(motor_speeds)):
             if motor_speeds[i] > 20:
-                del_index.append(i)
-        
-        for i in del_index:
-            np.remove(motor_speeds,i)
-        
-        if (len(motor_speeds)> 0):
-            return np.average(motor_speeds)
+                pass
+            else:
+                N+=1
+                avg+= motor_speeds[i]
+        if N > 0:
+            return avg/N
         else:
-            print("NO GOOD DATA BAD!")
-            return 0
+            print("Forward Linear Velocity could not be found")
+            return False
 
+        # If the robot is turning need the angular velocity and the radius of the turning circle
 
-
-        
-
-    
     def turn_right(self):
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512+112, 512-112, 512-112, 512+112))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023, 1023, 1023, 1023))
@@ -404,6 +397,7 @@ class controller():
         # stop when you have gotten to the start
         # now trace back to the goal by choosing lowest value spots
         # yay.
+    
     def next_loc(self, i, j, dir):
         end_i = i
         end_j = j
@@ -442,14 +436,14 @@ class controller():
             else:
                 self.turn_left()
             
-
-    #move one unit in a specific direction based on current orientation
     def move(self, dir_curr, dir_next):
+        # move one unit in a specific direction based on current orientation
         # north - 1, east - 2, south - dir, west - 4
         if(dir_curr != dir_next):
             turn_count = self.check_dir(dir_curr, dir_next)
             self.turn(turn_count)
         self.walk_forward_n_units(1)
+    
     def check_dir(self, dir_curr, dir_next):
         # turning right by 90 = 1, left by 90 = -1
         # right by 180 = 2, left by 180 = -2
@@ -488,7 +482,6 @@ class controller():
             self.x += np.cos(self.theta)*linear_velocity_in_x*dt
             self.y += np.sin(self.theta)*linear_velocity_in_y*dt
 
-
     def mapping(self):
         start = [0, 0, 3]
         #somehow keep track of places the robot has been
@@ -517,6 +510,52 @@ class controller():
             map.setObstacle(curr[0], curr[1], 1, dir)
         #go in first direction that it can go
 
+    def path_control(map, current_postion):
+        # Inputs 
+        # map: the obsticle map
+        # current_position : [x,y,dir] in map coordinates
+        
+        # Step one: Given where you are in the map. What obsticles are around you in relative terms? 
+        if (current_postion[2] -1) < 1: 
+            left_turn = 4
+        else:
+            left_turn = current_postion[2]-1
+
+        if (current_postion[2]+1) > 4:
+            right_turn = 1
+        else:
+            right_turn = current_postion[2]+1
+        
+        dir_array = [left_turn,current_postion[2],right_turn]
+        
+        if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[0])):
+            # True means there is an obsticle to the left
+            # Move distance sensor towards the obsticle and check that it is within a threshold
+            control.scan_left(90)
+        else:
+            print("There is no obsticle to the left of the robot")
+
+        if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[1])):
+            # There is an obsticle to the front of the robot
+            control.scan_front()
+        else:
+            print("There is no obsticle to the front")
+
+        if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[2])):
+            # There is an obsticle to the right of the robot
+            control.scan_right(90)
+        else:
+            print("There is no obsticle to the right")
+
+    
+
+        
+        
+
+        # Step two: update postion in the world based on sensor vals
+        # Step three: Make corrections to robot position
+
+        pass
 '''
     def move_one_unit(self):
         #have to correlate number of walks to distance
@@ -588,8 +627,9 @@ if __name__ == "__main__":
     #rospy.loginfo("Motor 7 Wheel speed: %d\nMotor 7 position: %d\nMotor response %d",motor_speed, motor_position,response)
     #dt = 0
     while not rospy.is_shutdown():
-        #forward_vel = control.recorded_wheel_speed_to_linear_velocity()
-        #control.odometry(forward_vel,R=0,W=0,dt=dt)
+        forward_vel = control.recorded_wheel_speed_to_linear_velocity()
+        if forward_vel:
+            control.odometry(forward_vel,R=0,W=0,dt=dt)
         r.sleep()
         #dt = 0.001
         #print(dt)
