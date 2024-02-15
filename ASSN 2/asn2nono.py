@@ -162,13 +162,17 @@ class controller():
         self.dms_port = 6
         self.dt = 1/10000 # Loop enforced at 10 kHz may need to actually measure as enforement only occurs when loop is faster.
         self.sleep_time = 0.1
-        # Initial position of the robot
+        # Position of the robot in real_world coordinates
         self.theta = 0
         self.x = 0
         self.y = 0
+        # Position of the robot in map coordinates
+        self.i = 0 # Should be values [0,7]
+        self.j = 0 # Should be values [0,7]
+        self.dir = 0 # Should be values [1,4]
         
         # Intitial Motor Config
-
+        '''
         # Set Motor Modes
         setMotorMode(5,1)
         setMotorMode(6,1)
@@ -188,6 +192,7 @@ class controller():
         response = setMotorWheelSpeed(8,0)
 
         rospy.sleep(0.5)
+        '''
 
     def wall_follow(self, threshold = 40, DMS_SENSOR_REF = 1000):
         # General PID Controller Scheme
@@ -271,6 +276,11 @@ class controller():
         encoder_speeds.append(getMotorWheelSpeed(6))
         encoder_speeds.append(getMotorWheelSpeed(7))
         encoder_speeds.append(getMotorWheelSpeed(8))
+        # Update Postion
+        next_pos=self.next_loc(self.i,self.j,self.dir)
+        self.i = next_pos[0]
+        self.j = next_pos[1]
+
         #self.odometry(encoder_speeds,self.state)
 
         #motor_speed = getMotorWheelSpeed(7)
@@ -325,12 +335,15 @@ class controller():
 
         # If the robot is turning need the angular velocity and the radius of the turning circle
 
-    def turn_right(self):
+    def turn_right(self,dir):
+        
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512+112, 512-112, 512-112, 512+112))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023, 1023, 1023, 1023))
         rospy.sleep(0.59)
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512, 512, 512, 512))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
+        self.dir = dir
+    
         #response = setMotorTargetPositionCommand(1,512)
         #response = setMotorTargetPositionCommand(2,512)
         #response = setMotorTargetPositionCommand(3,512)
@@ -341,47 +354,48 @@ class controller():
         #response = setMotorWheelSpeed(7,1023)
         #response = setMotorWheelSpeed(8,1023)
     
-    def turn_left(self):
+    def turn_left(self,dir):
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512+112, 512-112, 512-112, 512+112))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023+930, 1023+930, 1023+930, 1023+930))
         rospy.sleep(0.71)
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512, 512, 512, 512))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
+        self.dir = dir
 
-    def planning(self, map, start, end):
+    def planning(self, map, end):
+        # Start = [i,j,dir]
+        # End = [i,j,dir]
         map.setCost(end[0], end[1], 1)
         neighbor_queue = [[[end[0], end[1]], 1]]
 
-        self.set_costs(neighbor_queue, map, start)
+        self.set_costs(neighbor_queue, map)
         map.printCostMap()
         
         #actually tell robot to move
-        curr = start
         
-        while (not (curr[0] == end[0] and curr[1] == end[1])):
+        
+        while (not (self.i == end[0] and self.j == end[1])):
             dir = 1
             min = 1000
             for x in range(4):
-                curr_cost = map.getNeighborCost(curr[0], curr[1], x+1)
-                if (curr_cost != 0 and curr_cost < min and map.getNeighborObstacle(curr[0], curr[1], x+1) == 0):
+                curr_cost = map.getNeighborCost(self.i, self.j, x+1)
+                if (curr_cost != 0 and curr_cost < min and map.getNeighborObstacle(self.i, self.j, x+1) == 0):
                     dir = x+1
                     min = curr_cost
-            self.move(curr[2], dir)
+            self.move(dir)
             #print("move %d", dir)
-            next_loc = self.next_loc(curr[0], curr[1], dir)
-            curr = [next_loc[0], next_loc[1], dir]
-        
+       
         #check for final dir
-        if (not (curr[2] == end[2])):
-            turn_count = self.check_dir(curr[2], end[2])
+        if (not (self.dir == end[2])):
+            turn_count = self.check_dir(end[2])
             self.turn(turn_count)
     
-    def set_costs(self, neighbor_queue, map, start):
+    def set_costs(self, neighbor_queue, map):
         map.printCostMap()
         curr_element = neighbor_queue.pop(0)
         curr = curr_element[0]
         distance_from_end = curr_element[1]
-        if (not (curr[0] == start[0] and curr[1] == start[1])):
+        if (not (curr[0] == self.i and curr[1] == self.j)):
             distance_from_end += 1
             for x in range (4):
                 if(map.getNeighborObstacle(curr[0], curr[1], x+1) == 0):
@@ -390,7 +404,7 @@ class controller():
                         neighbor_queue.append([self.next_loc(curr[0], curr[1], x+1), distance_from_end])
                 #else 
         if(len(neighbor_queue)>0):
-            self.set_costs(neighbor_queue, map, start)
+            self.set_costs(neighbor_queue, map)
         # create a structure with al points of grid
         # explore neighboring spots from the end, add 1 to their val
         # continue with next neighboring, add 2....
@@ -398,7 +412,7 @@ class controller():
         # now trace back to the goal by choosing lowest value spots
         # yay.
     
-    def next_loc(self, i, j, dir):
+    def next_loc(self,i,j,dir):
         end_i = i
         end_j = j
         if (dir == 1):
@@ -409,45 +423,31 @@ class controller():
             end_i += 1
         if (dir == 4):
             end_j -= 1
-        return [end_i, end_j]
+        return [end_i,end_j]
 
-    def turn(self, turn_count):
+    def turn(self, turn_count,turn_dir):
         if (turn_count > 0):
             for x in range(turn_count):
-                self.turn_right()
+                print("Turning Right")
+                self.turn_right(turn_dir)
         else:
-            self.turn_left()
-
-    def move_test(self, i, j, dir):
-        #start facing south - dir = 3
-        # north - 1, east - 2, west - 4
-        start_i = 0
-        start_j = 0
-        curr_dir = 3
-        if (i - start_i > 0):
-            self.walk_forward_n_units(i - start_i)
-        if (j - start_j > 0):
-            self.turn_left()
-            curr_dir -=1
-            self.walk_forward_n_units(j - start_j)
-            turn_count = self.check_dir(curr_dir, dir)
-            if(turn_count >0):
-                self.turn_right()
-            else:
-                self.turn_left()
-            
-    def move(self, dir_curr, dir_next):
+            print("Turning Left")
+            self.turn_left(turn_dir)
+           
+    def move(self, dir_next):
         # move one unit in a specific direction based on current orientation
         # north - 1, east - 2, south - dir, west - 4
-        if(dir_curr != dir_next):
-            turn_count = self.check_dir(dir_curr, dir_next)
-            self.turn(turn_count)
-        self.walk_forward_n_units(1)
+        if(self.dir != dir_next):
+            turn_count = self.check_dir(dir_next)
+            self.turn(turn_count,dir_next)
     
-    def check_dir(self, dir_curr, dir_next):
+        print("Walking forward")
+        self.walk_forward_n_units(1)
+          
+    def check_dir(self, dir_next):
         # turning right by 90 = 1, left by 90 = -1
         # right by 180 = 2, left by 180 = -2
-        test_dir = dir_curr
+        test_dir = self.dir
         turn_count = 0
         while(test_dir != dir_next):
             if (test_dir < 4):
@@ -485,20 +485,25 @@ class controller():
     def mapping(self):
         start = [0, 0, 3]
         #somehow keep track of places the robot has been
+        exploration_queue = []
         curr = start
-        map = EECSMap()
+        map = map.EECSMap()
         map.clearObstacleMap()
         #look around left forward and right
         left_value,front_value,right_value = self.full_scan()
+        # Also turn left and look left for behind value
+        self.turn(-1)
+        behind_value = self.scan_left()
+        
         #add obstacles
         obstacle_threshold = 2000
         if(left_value > obstacle_threshold):
-            dir = curr[2]
-            if(curr[2] > 1):
-                dir = curr[2] - 1
+            dir = self.dir
+            if(self.dir > 1):
+                dir = self.dir - 1
             else:
                 dir = 4
-            map.setObstacle(curr[0], curr[1], 1, dir)
+            map.setObstacle(self.i, self.j, 1, dir)
         if(front_value > obstacle_threshold):
             map.setObstacle(curr[0], curr[1], 1, curr[2])
         if(right_value > obstacle_threshold):
@@ -508,6 +513,8 @@ class controller():
             else:
                 dir = 1
             map.setObstacle(curr[0], curr[1], 1, dir)
+
+        
         #go in first direction that it can go
 
     def path_control(map, current_postion):
@@ -532,18 +539,21 @@ class controller():
             # True means there is an obsticle to the left
             # Move distance sensor towards the obsticle and check that it is within a threshold
             control.scan_left(90)
+            # Corrective Behavior
         else:
             print("There is no obsticle to the left of the robot")
 
         if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[1])):
             # There is an obsticle to the front of the robot
             control.scan_front()
+            # Corrective Behavior
         else:
             print("There is no obsticle to the front")
 
         if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[2])):
             # There is an obsticle to the right of the robot
             control.scan_right(90)
+            # Corrective Behavior
         else:
             print("There is no obsticle to the right")
 
@@ -579,7 +589,7 @@ class controller():
         turn_90_right()
         move_one_unit()
 '''       
-        
+  
         
 # 15cm DMS sensor reading 1350
 
@@ -601,13 +611,14 @@ if __name__ == "__main__":
     map = EECSMap()
     map.printObstacleMap()
     
-    i_start = int(input("What is start_i?"))
-    j_start = int(input("What is start_j?"))
-    dir_start = int(input("What is start_dir?"))
+    control.i = int(input("What is start_i?"))
+    control.j = int(input("What is start_j?"))
+    control.dir = int(input("What is start_dir?"))
+
     i_end = int(input("What is end_i?"))
     j_end = int(input("What is end_j?"))
     dir_end = int(input("What is end_dir?"))
-    control.planning(map, [i_start, j_start, dir_start], [i_end, j_end, dir_end]) 
+    control.planning(map, [i_end, j_end, dir_end]) 
     
     '''
     response = setMotorWheelSpeed(5,1023)
@@ -627,9 +638,11 @@ if __name__ == "__main__":
     #rospy.loginfo("Motor 7 Wheel speed: %d\nMotor 7 position: %d\nMotor response %d",motor_speed, motor_position,response)
     #dt = 0
     while not rospy.is_shutdown():
+        '''
         forward_vel = control.recorded_wheel_speed_to_linear_velocity()
         if forward_vel:
             control.odometry(forward_vel,R=0,W=0,dt=dt)
+        '''
         r.sleep()
         #dt = 0.001
         #print(dt)
