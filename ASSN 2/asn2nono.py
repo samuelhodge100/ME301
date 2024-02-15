@@ -335,14 +335,13 @@ class controller():
 
         # If the robot is turning need the angular velocity and the radius of the turning circle
 
-    def turn_right(self,dir):
+    def turn_right(self):
         
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512+112, 512-112, 512-112, 512+112))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023, 1023, 1023, 1023))
-        rospy.sleep(0.59)
+        rospy.sleep(0.60)
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512, 512, 512, 512))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
-        self.dir = dir
     
         #response = setMotorTargetPositionCommand(1,512)
         #response = setMotorTargetPositionCommand(2,512)
@@ -354,13 +353,12 @@ class controller():
         #response = setMotorWheelSpeed(7,1023)
         #response = setMotorWheelSpeed(8,1023)
     
-    def turn_left(self,dir):
+    def turn_left(self):
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512+112, 512-112, 512-112, 512+112))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023+930, 1023+930, 1023+930, 1023+930))
         rospy.sleep(0.71)
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512, 512, 512, 512))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
-        self.dir = dir
 
     def planning(self, map, end):
         # Start = [i,j,dir]
@@ -377,11 +375,43 @@ class controller():
         while (not (self.i == end[0] and self.j == end[1])):
             dir = 1
             min = 1000
-            for x in range(4):
-                curr_cost = map.getNeighborCost(self.i, self.j, x+1)
-                if (curr_cost != 0 and curr_cost < min and map.getNeighborObstacle(self.i, self.j, x+1) == 0):
-                    dir = x+1
-                    min = curr_cost
+            cost_dict = {}
+            for x in range(1,4):
+                cost_dict[x] = map.getNeighborCost(self.i, self.j, x)
+                if (cost_dict[x] != 0 and cost_dict[x] < min and map.getNeighborObstacle(self.i, self.j, x) == 0):
+                    min = cost_dict[x]
+           
+            min_dirs = [key for key in cost_dict if cost_dict[key]==min]
+            if(len(min_dirs)>1):
+                left_dir = 0
+                right_dir = 0
+                back_dir = 0
+                if (self.dir > 1):
+                    left_dir = self.dir - 1
+                else:
+                    left_dir = 4
+                if (self.dir < 4):
+                    right_dir = self.dir + 1
+                else:
+                    right_dir = 1 
+                if (self.dir > 1):
+                    back_dir = self.dir - 1
+                else:
+                    back_dir = 4    
+                if (back_dir > 1):
+                    back_dir = back_dir - 1
+                else:
+                    back_dir = 4           
+                if(self.dir in min_dirs):
+                    dir = self.dir
+                elif(left_dir in min_dirs):
+                    dir = left_dir
+                elif(right_dir in min_dirs):
+                    dir = right_dir
+                elif(back_dir in min_dirs):
+                    dir = back_dir  
+            else:
+                dir = min_dirs[0]
             self.move(dir)
             #print("move %d", dir)
        
@@ -425,21 +455,29 @@ class controller():
             end_j -= 1
         return [end_i,end_j]
 
-    def turn(self, turn_count,turn_dir):
+    def turn(self, turn_count):
         if (turn_count > 0):
             for x in range(turn_count):
                 print("Turning Right")
-                self.turn_right(turn_dir)
+                if(self.dir < 4):
+                    self.dir += 1
+                else:
+                    self.dir = 1
+                self.turn_right()
         else:
             print("Turning Left")
-            self.turn_left(turn_dir)
+            if(self.dir > 1):
+                self.dir -= 1
+            else:
+                self.dir = 4
+            self.turn_left()
            
     def move(self, dir_next):
         # move one unit in a specific direction based on current orientation
         # north - 1, east - 2, south - dir, west - 4
         if(self.dir != dir_next):
             turn_count = self.check_dir(dir_next)
-            self.turn(turn_count,dir_next)
+            self.turn(turn_count)
     
         print("Walking forward")
         self.walk_forward_n_units(1)
@@ -484,6 +522,7 @@ class controller():
 
     def mapping(self):
         start = [0, 0, 3]
+        obstacle_threshold = 2000
         #somehow keep track of places the robot has been
         exploration_queue = []
         curr = start
@@ -491,28 +530,40 @@ class controller():
         map.clearObstacleMap()
         #look around left forward and right
         left_value,front_value,right_value = self.full_scan()
+        
         # Also turn left and look left for behind value
         self.turn(-1)
         behind_value = self.scan_left()
+
+        direction_values = {}
+        dir = self.dir
+        direction_values[dir] = left_value
+        if(dir < 4):
+            dir+=1
+        else:
+            dir = 1
+        direction_values[dir] = front_value
+        if(dir < 4):
+            dir+=1
+        else:
+            dir = 1
+        direction_values[dir] = right_value
+        if(dir < 4):
+            dir+=1
+        else:
+            dir = 1
+        direction_values[dir] = behind_value
         
         #add obstacles
-        obstacle_threshold = 2000
-        if(left_value > obstacle_threshold):
-            dir = self.dir
-            if(self.dir > 1):
-                dir = self.dir - 1
+        for x in range(1,4):
+            if(direction_values[x] > obstacle_threshold):
+                # If there is an obsticle add it to the map
+                map.setObstacle(self.i, self.j, 1, x)
             else:
-                dir = 4
-            map.setObstacle(self.i, self.j, 1, dir)
-        if(front_value > obstacle_threshold):
-            map.setObstacle(curr[0], curr[1], 1, curr[2])
-        if(right_value > obstacle_threshold):
-            dir = curr[2]
-            if(curr[2] < 4):
-                dir = curr[2] + 1
-            else:
-                dir = 1
-            map.setObstacle(curr[0], curr[1], 1, dir)
+                # Otherwise add it to the exploration queue
+                exploration_queue.append(self.next_loc(self.i,self.j,x))
+
+        
 
         
         #go in first direction that it can go
