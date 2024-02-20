@@ -288,6 +288,22 @@ class controller():
         #rospy.loginfo("Motor 7 Wheel speed: %d\nMotor 7 position: %d\nMotor response %d",motor_speed, motor_position,response)
 
         #rospy.sleep(1.8)
+    def walk_straight(self, err):
+        # Inputs the error from DMS sensor to reference
+        # a positive error corresponds with corrective movement backwards
+        # a negative error corresponds with corrective movement forwards
+        response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512, 512, 512, 512))
+
+        if err > 0:
+            response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023+1023, 930, 1023+1023, 930))
+            pass
+        else:
+            response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023, 1023+930, 1023, 1023+930))
+            pass
+        
+        rospy.sleep(0.2*err)
+        response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
+
         
     def walk_forward_n_units(self, n):
         self.walk_forward()
@@ -603,11 +619,15 @@ class controller():
         else:
             rospy.log("Trapped")
 
-    def path_control(map, current_postion):
+    def path_control(self, map, current_postion, DMS_THRESHOLD = 2500, DMS_RANGE = 500, Kp = 0.01):
         # Inputs 
         # map: the obsticle map
         # current_position : [x,y,dir] in map coordinates
+        # DMS_THRESHOLD : the value of the dms sensor that corresponds with too close to the wall
+        # DMS_RANGE :  the range of acceptable values under DMS_THRESHOLD
+            # EX: DMS_THRESHOLD = 2500 and DMS_RANGE = 500, then corrective behavior occurs when outside of (2000,2500)
         
+
         # Step one: Given where you are in the map. What obsticles are around you in relative terms? 
         if (current_postion[2] -1) < 1: 
             left_turn = 4
@@ -620,30 +640,50 @@ class controller():
             right_turn = current_postion[2]+1
         
         dir_array = [left_turn,current_postion[2],right_turn]
+
+        if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[1])):
+            # There is an obsticle to the front of the robot
+            dms_front = control.scan_front()
+            # Corrective Behavior
+            while(DMS_THRESHOLD-DMS_RANGE<dms_front<DMS_THRESHOLD):
+                err = DMS_THRESHOLD - dms_front
+                print("Correcting forward behavior")
+                # Just need to move backwards a certain small amount probably best not to completely turn around 
+                # DONT update the map positon
+                # need an input to decide forward or backwards
+                
+                print(f'The forwards error is: {err * Kp}')
+                self.walk_straight(err * Kp)
+                dms_front = control.scan_front()
+        else:
+            print("There is no obsticle to the front")
         
         if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[0])):
             # True means there is an obsticle to the left
             # Move distance sensor towards the obsticle and check that it is within a threshold
-            control.scan_left(90)
+            dms_left = control.scan_left(100)
             # Corrective Behavior
+            while(DMS_THRESHOLD-DMS_RANGE<dms_left<DMS_THRESHOLD):
+                print("Correcting left behavior")
+                # Do some shit
+                dms_left = control.scan_left(100)
+                pass
         else:
             print("There is no obsticle to the left of the robot")
 
-        if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[1])):
-            # There is an obsticle to the front of the robot
-            control.scan_front()
-            # Corrective Behavior
-        else:
-            print("There is no obsticle to the front")
-
         if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[2])):
             # There is an obsticle to the right of the robot
-            control.scan_right(90)
+            dms_right = control.scan_right(100)
             # Corrective Behavior
+            while(DMS_THRESHOLD-DMS_RANGE<dms_right<DMS_THRESHOLD):
+                print("Correcting right behavior")
+                # Do some movement
+                dms_right = control.scan_right(100)
+                pass
         else:
             print("There is no obsticle to the right")
 
-    
+        # Potentially update angle ??
 
         
         
