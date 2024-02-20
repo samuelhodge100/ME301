@@ -172,18 +172,20 @@ class controller():
         self.dir = 0 # Should be values [1,4]
         
         # Intitial Motor Config
-        '''
+        
         # Set Motor Modes
         setMotorMode(5,1)
         setMotorMode(6,1)
         setMotorMode(7,1)
         setMotorMode(8,1)
+        setMotorMode(10,0)
 
         # Set forward angle
         response = setMotorTargetPositionCommand(1,512)
         response = setMotorTargetPositionCommand(2,512)
         response = setMotorTargetPositionCommand(3,512)
         response = setMotorTargetPositionCommand(4,512)
+        response = setMotorTargetPositionCommand(10,512)
 
         # Set motor speeds to zero
         response = setMotorWheelSpeed(5,0)
@@ -192,7 +194,7 @@ class controller():
         response = setMotorWheelSpeed(8,0)
 
         rospy.sleep(0.5)
-        '''
+        
 
     def wall_follow(self, threshold = 40, DMS_SENSOR_REF = 1000):
         # General PID Controller Scheme
@@ -246,12 +248,19 @@ class controller():
     def scan_left(self,deg):
         # Assuming that once the motor achieves the commanded motor position it will return true
         # TODO: Need to check this assumption, and integrate into the other scan functions
+        '''
         response = 0
         while(not response):
             response = setMotorTargetPositionCommand(10, theta_to_encoder(deg,10))
         dms_sensor_reading = getSensorValue(self.dms_port)
         rospy.loginfo("Sensor value at port %d: %f", self.dms_port, dms_sensor_reading)
 
+        return dms_sensor_reading
+        '''
+        response = setMotorTargetPositionCommand(10, theta_to_encoder(deg,10))
+        rospy.sleep(self.sleep_time*5)
+        dms_sensor_reading = getSensorValue(self.dms_port)
+        rospy.loginfo("Sensor value at port %d: %f", self.dms_port, dms_sensor_reading)
         return dms_sensor_reading
 
     def scan_right(self,deg):
@@ -276,8 +285,9 @@ class controller():
         encoder_speeds.append(getMotorWheelSpeed(6))
         encoder_speeds.append(getMotorWheelSpeed(7))
         encoder_speeds.append(getMotorWheelSpeed(8))
-        # Update Postion
+        # Update position
         next_pos=self.next_loc(self.i,self.j,self.dir)
+        print([self.i, self.j, self.dir])
         self.i = next_pos[0]
         self.j = next_pos[1]
 
@@ -294,14 +304,14 @@ class controller():
         # a negative error corresponds with corrective movement forwards
         response = setMotorTargetPositionSync(4, (1, 2, 3, 4), (512, 512, 512, 512))
 
-        if err > 0:
+        if err < 0:
             response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023+1023, 930, 1023+1023, 930))
             pass
         else:
             response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023, 1023+930, 1023, 1023+930))
             pass
         
-        rospy.sleep(0.2*err)
+        rospy.sleep(0.2*abs(err))
         response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (0, 0, 0, 0))
 
         
@@ -392,12 +402,13 @@ class controller():
             dir = 1
             min = 1000
             cost_dict = {}
-            for x in range(1,4):
+            for x in range(1,5):
                 cost_dict[x] = map.getNeighborCost(self.i, self.j, x)
                 if (cost_dict[x] != 0 and cost_dict[x] < min and map.getNeighborObstacle(self.i, self.j, x) == 0):
                     min = cost_dict[x]
            
             min_dirs = [key for key in cost_dict if cost_dict[key]==min]
+            print(min_dirs)
             if(len(min_dirs)>1):
                 left_dir = 0
                 right_dir = 0
@@ -410,14 +421,11 @@ class controller():
                     right_dir = self.dir + 1
                 else:
                     right_dir = 1 
-                if (self.dir > 1):
-                    back_dir = self.dir - 1
-                else:
-                    back_dir = 4    
-                if (back_dir > 1):
-                    back_dir = back_dir - 1
-                else:
-                    back_dir = 4           
+                if (self.dir + 2 > 3):
+                    back_dir = self.dir + 2 - 4
+                else: 
+                    back_dir = self.dir + 2
+                   
                 if(self.dir in min_dirs):
                     dir = self.dir
                 elif(left_dir in min_dirs):
@@ -429,6 +437,8 @@ class controller():
             else:
                 dir = min_dirs[0]
             self.move(dir)
+            rospy.loginfo("moving in %f dir", dir)
+            self.path_control(map, [self.i, self.j, self.dir])
             #print("move %d", dir)
        
         #check for final dir
@@ -536,29 +546,34 @@ class controller():
             self.x += np.cos(self.theta)*linear_velocity_in_x*dt
             self.y += np.sin(self.theta)*linear_velocity_in_y*dt
 
-    def mapping(self):
-        start = [0, 0, 3]
+    def mapping(self, map):
+        start = [0,0,3]
+        map.clearObstacleMap()
         # keep track of new places the robot can go
         to_explore_queue = [[start[0], start[1]]]
+        self.i = start[0]
+        self.j = start[1]
+        self.dir = start[2]
         # keep track of places the robot has been
         prev_explore_queue = []
         curr = start
-        map = map.EECSMap()
-        map.clearObstacleMap()
 
-        self.map_loc(to_explore_queue[0], to_explore_queue, prev_explore_queue)
+        self.map_loc(map, to_explore_queue, prev_explore_queue)
 
-    def map_loc(self, curr, to_explore_queue, prev_explore_queue):
-        to_explore_queue.remove(curr)
-        prev_explore_queue.append(curr)
-
-        obstacle_threshold = 2000
+    def map_loc(self, map, to_explore_queue, prev_explore_queue):
+        to_explore_queue.remove([self.i, self.j])
+        prev_explore_queue.append([self.i, self.j])
+        forward_threshold = 2000
+        obstacle_threshold = 1000
+        #1800 for left and right, 1000 for back
         #look around left forward and right
+        print("start scan")
         left_value,front_value,right_value = self.full_scan()
-        
+        print("did scan")
         # Also turn left and look left for behind value
         self.turn(-1)
-        behind_value = self.scan_left()
+        print([self.i, self.j, self.dir])
+        behind_value = self.scan_left(110)
 
         direction_values = {}
         dir = self.dir
@@ -583,43 +598,53 @@ class controller():
         direction_values[dir] = behind_value
         left_dir = dir
         
+        print(direction_values)
         #add obstacles
-        for x in range(1,4):
-            if(direction_values[x] > obstacle_threshold):
-                # If there is an obsticle add it to the map
-                map.setObstacle(self.i, self.j, 1, x)
+        for x in range(1,5):
+            next = self.next_loc(self.i, self.j, x)
+            if(8 > next[0] > -1 and 8 > next[1] > -1):
+                if(map.getNeighborObstacle(self.i, self.j, x) == 0):
+                    if(direction_values[x] > obstacle_threshold):
+                        # If there is an obsticle add it to the map
+                        map.setObstacle(self.i, self.j, 1, x)
+                        print("obstacle in dir: %d", x)
+                    elif(not [next[0], next[1]] in prev_explore_queue):
+                        to_explore_queue.append(self.next_loc(self.i,self.j,x))
             else:
-                # Otherwise add it to the exploration queue
-                to_explore_queue.append(self.next_loc(self.i,self.j,x))
-
+                map.setObstacle(self.i, self.j, 1, x)
+        map.printObstacleMap()
+        print(to_explore_queue)
+        self.path_control(map, [self.i, self.j, self.dir])
         if(self.next_loc(self.i,self.j,front_dir) in to_explore_queue):
+            print("forward is in to-explore queue")
             self.move(front_dir)
-            self.map_loc(self.next_loc(self.i,self.j,front_dir), to_explore_queue, prev_explore_queue)
         elif(self.next_loc(self.i,self.j,left_dir) in to_explore_queue):
+            print("left is in to-explore queue")
             self.move(left_dir)
-            self.map_loc(self.next_loc(self.i,self.j,left_dir), to_explore_queue, prev_explore_queue)
         elif(self.next_loc(self.i,self.j,right_dir) in to_explore_queue):
+            print("right is in to-explore queue")
             self.move(right_dir)
-            self.map_loc(self.next_loc(self.i,self.j,right_dir), to_explore_queue, prev_explore_queue)
         elif(self.next_loc(self.i,self.j,back_dir) in to_explore_queue):
+            print("back is in to-explore queue")
             self.move(back_dir)
-            self.map_loc(self.next_loc(self.i,self.j,back_dir), to_explore_queue, prev_explore_queue)
         elif(map.getNeighborObstacle(self.i,self.j,front_dir) == 0):
+            print("forward is in prev-explored queue")
             self.move(front_dir)
-            self.map_loc(self.next_loc(self.i,self.j,front_dir), to_explore_queue, prev_explore_queue)
         elif(map.getNeighborObstacle(self.i,self.j,left_dir) == 0):
+            print("left is in prev-explored queue")
             self.move(left_dir)
-            self.map_loc(self.next_loc(self.i,self.j,left_dir), to_explore_queue, prev_explore_queue)
         elif(map.getNeighborObstacle(self.i,self.j,right_dir) == 0):
+            print("right is in prev-explored queue")
             self.move(right_dir)
-            self.map_loc(self.next_loc(self.i,self.j,right_dir), to_explore_queue, prev_explore_queue)
         elif(map.getNeighborObstacle(self.i,self.j,back_dir) == 0):
+            print("back is in prev-explored queue")
             self.move(back_dir)
-            self.map_loc(self.next_loc(self.i,self.j,back_dir), to_explore_queue, prev_explore_queue)
         else:
-            rospy.log("Trapped")
+            rospy.loginfo("Trapped")
+        
+        self.map_loc(map, to_explore_queue, prev_explore_queue)
 
-    def path_control(self, map, current_postion, DMS_THRESHOLD = 2500, DMS_RANGE = 500, Kp = 0.01):
+    def path_control(self, map, current_position, DMS_THRESHOLD = 2550, DMS_RANGE = 120, Kp = 0.00001):
         # Inputs 
         # map: the obsticle map
         # current_position : [x,y,dir] in map coordinates
@@ -629,36 +654,37 @@ class controller():
         
 
         # Step one: Given where you are in the map. What obsticles are around you in relative terms? 
-        if (current_postion[2] -1) < 1: 
+        print(current_position)
+        if (current_position[2] -1) < 1: 
             left_turn = 4
         else:
-            left_turn = current_postion[2]-1
+            left_turn = current_position[2]-1
 
-        if (current_postion[2]+1) > 4:
+        if (current_position[2]+1) > 4:
             right_turn = 1
         else:
-            right_turn = current_postion[2]+1
+            right_turn = current_position[2]+1
         
-        dir_array = [left_turn,current_postion[2],right_turn]
+        dir_array = [left_turn,current_position[2],right_turn]
 
-        if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[1])):
+        if (map.getNeighborObstacle(current_position[0], current_position[1], dir_array[1])):
             # There is an obsticle to the front of the robot
             dms_front = control.scan_front()
             # Corrective Behavior
-            while(DMS_THRESHOLD-DMS_RANGE<dms_front<DMS_THRESHOLD):
+            while(DMS_THRESHOLD-DMS_RANGE>dms_front or dms_front>DMS_THRESHOLD+DMS_RANGE):
                 err = DMS_THRESHOLD - dms_front
                 print("Correcting forward behavior")
                 # Just need to move backwards a certain small amount probably best not to completely turn around 
                 # DONT update the map positon
                 # need an input to decide forward or backwards
                 
-                print(f'The forwards error is: {err * Kp}')
+                rospy.loginfo("The forwards error is: %f", err * Kp)
                 self.walk_straight(err * Kp)
                 dms_front = control.scan_front()
         else:
             print("There is no obsticle to the front")
-        
-        if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[0])):
+        '''
+        if (map.getNeighborObstacle(current_position[0], current_position[1], dir_array[0])):
             # True means there is an obsticle to the left
             # Move distance sensor towards the obsticle and check that it is within a threshold
             dms_left = control.scan_left(100)
@@ -671,7 +697,7 @@ class controller():
         else:
             print("There is no obsticle to the left of the robot")
 
-        if (map.getNeighborObstacle(current_postion[0], current_postion[1], dir_array[2])):
+        if (map.getNeighborObstacle(current_position[0], current_position[1], dir_array[2])):
             # There is an obsticle to the right of the robot
             dms_right = control.scan_right(100)
             # Corrective Behavior
@@ -682,13 +708,13 @@ class controller():
                 pass
         else:
             print("There is no obsticle to the right")
-
+        '''
         # Potentially update angle ??
 
         
         
 
-        # Step two: update postion in the world based on sensor vals
+        # Step two: update position in the world based on sensor vals
         # Step three: Make corrections to robot position
 
         pass
@@ -737,6 +763,7 @@ if __name__ == "__main__":
     map = EECSMap()
     map.printObstacleMap()
     
+    '''
     control.i = int(input("What is start_i?"))
     control.j = int(input("What is start_j?"))
     control.dir = int(input("What is start_dir?"))
@@ -745,7 +772,9 @@ if __name__ == "__main__":
     j_end = int(input("What is end_j?"))
     dir_end = int(input("What is end_dir?"))
     control.planning(map, [i_end, j_end, dir_end]) 
-    
+    '''
+    control.mapping(map)
+    #control.path_control(map, [0,0,4])
     '''
     response = setMotorWheelSpeed(5,1023)
     response = setMotorWheelSpeed(6,1023+930)
