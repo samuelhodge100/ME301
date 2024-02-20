@@ -522,12 +522,21 @@ class controller():
 
     def mapping(self):
         start = [0, 0, 3]
-        obstacle_threshold = 2000
-        #somehow keep track of places the robot has been
-        exploration_queue = []
+        # keep track of new places the robot can go
+        to_explore_queue = [[start[0], start[1]]]
+        # keep track of places the robot has been
+        prev_explore_queue = []
         curr = start
         map = map.EECSMap()
         map.clearObstacleMap()
+
+        self.map_loc(to_explore_queue[0], to_explore_queue, prev_explore_queue)
+
+    def map_loc(self, curr, to_explore_queue, prev_explore_queue):
+        to_explore_queue.remove(curr)
+        prev_explore_queue.append(curr)
+
+        obstacle_threshold = 2000
         #look around left forward and right
         left_value,front_value,right_value = self.full_scan()
         
@@ -538,21 +547,25 @@ class controller():
         direction_values = {}
         dir = self.dir
         direction_values[dir] = left_value
+        front_dir = dir
         if(dir < 4):
             dir+=1
         else:
             dir = 1
         direction_values[dir] = front_value
+        right_dir = dir
         if(dir < 4):
             dir+=1
         else:
             dir = 1
         direction_values[dir] = right_value
+        back_dir = dir
         if(dir < 4):
             dir+=1
         else:
             dir = 1
         direction_values[dir] = behind_value
+        left_dir = dir
         
         #add obstacles
         for x in range(1,4):
@@ -561,12 +574,34 @@ class controller():
                 map.setObstacle(self.i, self.j, 1, x)
             else:
                 # Otherwise add it to the exploration queue
-                exploration_queue.append(self.next_loc(self.i,self.j,x))
+                to_explore_queue.append(self.next_loc(self.i,self.j,x))
 
-        
-
-        
-        #go in first direction that it can go
+        if(self.next_loc(self.i,self.j,front_dir) in to_explore_queue):
+            self.move(front_dir)
+            self.map_loc(self.next_loc(self.i,self.j,front_dir), to_explore_queue, prev_explore_queue)
+        elif(self.next_loc(self.i,self.j,left_dir) in to_explore_queue):
+            self.move(left_dir)
+            self.map_loc(self.next_loc(self.i,self.j,left_dir), to_explore_queue, prev_explore_queue)
+        elif(self.next_loc(self.i,self.j,right_dir) in to_explore_queue):
+            self.move(right_dir)
+            self.map_loc(self.next_loc(self.i,self.j,right_dir), to_explore_queue, prev_explore_queue)
+        elif(self.next_loc(self.i,self.j,back_dir) in to_explore_queue):
+            self.move(back_dir)
+            self.map_loc(self.next_loc(self.i,self.j,back_dir), to_explore_queue, prev_explore_queue)
+        elif(map.getNeighborObstacle(self.i,self.j,front_dir) == 0):
+            self.move(front_dir)
+            self.map_loc(self.next_loc(self.i,self.j,front_dir), to_explore_queue, prev_explore_queue)
+        elif(map.getNeighborObstacle(self.i,self.j,left_dir) == 0):
+            self.move(left_dir)
+            self.map_loc(self.next_loc(self.i,self.j,left_dir), to_explore_queue, prev_explore_queue)
+        elif(map.getNeighborObstacle(self.i,self.j,right_dir) == 0):
+            self.move(right_dir)
+            self.map_loc(self.next_loc(self.i,self.j,right_dir), to_explore_queue, prev_explore_queue)
+        elif(map.getNeighborObstacle(self.i,self.j,back_dir) == 0):
+            self.move(back_dir)
+            self.map_loc(self.next_loc(self.i,self.j,back_dir), to_explore_queue, prev_explore_queue)
+        else:
+            rospy.log("Trapped")
 
     def path_control(map, current_postion):
         # Inputs 
