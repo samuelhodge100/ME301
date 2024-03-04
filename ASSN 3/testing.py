@@ -3,11 +3,21 @@ from collections import Counter
 
 
 class K_Nearest_Neighbors:
-    def __init__(self, dataset, k):
+    def __init__(self):
         # k between 1 and 20
         self.k = 3
-        self.dataset = dataset
         self.classes = ["concave", "convex", "straight_wall"]
+        self.datafiles = [
+            ["concave_57D_11cm_wall_data.csv", "concave"],
+            ["concave_57D_16cm_wall_data.csv", "concave"],
+            ["concave_57D_22cm_wall_data.csv", "concave"],
+            ["convex_57D_11cm_wall_data.csv", "convex"],
+            ["convex_57D_16cm_wall_data.csv", "convex"],
+            ["convex_57D_22cm_wall_data.csv", "convex"],
+            ["straight_wall_11cm_data.csv", "straight_wall"],
+            ["straight_wall_16cm_data.csv", "straight_wall"],
+            ["straight_wall_22cm_data.csv", "straight_wall"],
+        ]
         self.x_data = []
         self.class_data = []
 
@@ -21,14 +31,8 @@ class K_Nearest_Neighbors:
 
     def fit_data(self):
         # sets up x_data and class_data
-        dataset = self.read_data(
-            "C:/Users/liban/Desktop/School stuff/CS 301/ME301/ASSN 3/concave_57D_11cm_wall_data.csv"
-        )
+        dataset = self.read_data()
         self.x_data = self.normalize_dataset(dataset)
-        class_dataset = []
-        for x in range(len(dataset)):
-            class_dataset.append("concave")
-        self.class_data = class_dataset
 
     def two_vec_dist(self, row1, row2):
         # Compute the distance between two vectors
@@ -49,24 +53,30 @@ class K_Nearest_Neighbors:
         print(predictions)
         return Counter(predictions).most_common(1)[0][0]
 
-    def read_data(self, filename):
+    def read_data(self):
         # Put data from csv file into a dataset
-        f = open(filename, "r")
         dataset = []
-        row = f.readline()
-        while row:  # read until end of file
-            row_data = row.split(",")
-            # last element might be an empty string
-            row_data.pop()
-            row_data = list(map(int, row_data))
-            dataset.append(row_data)
+        class_dataset = []
+        for d, c in self.datafiles:
+            f = open(
+                "C:/Users/liban/Desktop/School stuff/CS 301/ME301/ASSN 3/" + d, "r"
+            )
             row = f.readline()
-        f.close()
+            while row:  # read until end of file
+                row_data = row.split(",")
+                # last element might be an empty string
+                row_data.pop()
+                row_data = list(map(int, row_data))
+                dataset.append(row_data)
+                class_dataset.append(c)
+                row = f.readline()
+            f.close()
+        self.class_data = class_dataset
         return dataset
 
 
 # files are [concave_57D,convex_57D,straight_wall]_[11cm,16cm,22cm]_wall_data.csv
-k_nearest_neighbors = K_Nearest_Neighbors("", 1)
+k_nearest_neighbors = K_Nearest_Neighbors()
 # dataset = k_nearest_neighbors.read_data(
 # "C:/Users/liban/Desktop/School stuff/CS 301/ME301/ASSN 3/concave_57D_11cm_wall_data.csv"
 # )
@@ -75,36 +85,36 @@ k_nearest_neighbors.fit_data()
 print(
     k_nearest_neighbors.predict(
         [
-            1209,
-            1251,
-            1295,
-            1333,
-            1384,
-            1419,
-            1457,
-            1485,
-            1529,
-            1559,
-            1767,
-            1633,
-            1800,
-            1822,
-            1700,
-            1709,
-            1713,
-            1855,
-            1695,
-            1776,
-            1668,
-            1630,
-            1737,
-            1516,
-            1447,
-            1383,
-            1321,
-            1414,
-            1225,
-            1193,
+            600,
+            492,
+            570,
+            637,
+            705,
+            954,
+            812,
+            844,
+            901,
+            926,
+            950,
+            981,
+            993,
+            1021,
+            1023,
+            1023,
+            1050,
+            1023,
+            1023,
+            1017,
+            998,
+            964,
+            951,
+            911,
+            883,
+            846,
+            796,
+            740,
+            882,
+            675,
         ]
     )
 )

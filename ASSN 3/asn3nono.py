@@ -5,6 +5,7 @@ import numpy as np
 import csv
 from fw_wrapper.srv import *
 from map import *
+from collections import Counter
 
 # -----------SERVICE DEFINITION-----------
 # allcmd REQUEST DATA
@@ -275,10 +276,95 @@ class controller():
         dms_sensor_reading = getSensorValue(self.dms_port)
         rospy.loginfo("Sensor value at port %d: %f", self.dms_port, dms_sensor_reading)
         return dms_sensor_reading
-
-    def k_nearest_neighbors(self):
+    
+    def test_scan(self):
+        dms_readings = []
+        start_motor_position = 300
+        end_position = 512-300+512
+        N = 30
         
-        pass
+        for i in np.linspace(start_motor_position,end_position,30):
+            response = setMotorTargetPositionCommand(10, i)
+            rospy.sleep(self.sleep_time*5)
+            dms_sensor_reading = getSensorValue(self.dms_port)
+            rospy.loginfo("Robot scan pos %d, val %f", i, dms_sensor_reading)
+            dms_readings.append(dms_sensor_reading)
+        response = setMotorTargetPositionCommand(10, start_motor_position)
+        rospy.sleep(self.sleep_time*7)
+        knn = K_Nearest_Neighbors()
+        knn.fit_data()
+        prediction = knn.predict(dms_readings)
+        rospy.loginfo("Predicted walltype is %s", prediction)
+
+class K_Nearest_Neighbors:
+    def __init__(self):
+        # k between 1 and 20
+        self.k = 3
+        self.classes = ["concave", "convex", "straight_wall"]
+        self.datafiles = [
+            ["concave_57D_11cm_wall_data.csv", "concave"],
+            ["concave_57D_16cm_wall_data.csv", "concave"],
+            ["concave_57D_22cm_wall_data.csv", "concave"],
+            ["convex_57D_11cm_wall_data.csv", "convex"],
+            ["convex_57D_16cm_wall_data.csv", "convex"],
+            ["convex_57D_22cm_wall_data.csv", "convex"],
+            ["straight_wall_11cm_data.csv", "straight_wall"],
+            ["straight_wall_16cm_data.csv", "straight_wall"],
+            ["straight_wall_22cm_data.csv", "straight_wall"],
+        ]
+        self.x_data = []
+        self.class_data = []
+
+    def normalize_dataset(self, dataset):
+        # Normalize the dataset
+        norm_dataset = []
+        for row in dataset:
+            norm_row = np.linalg.norm(row)
+            norm_dataset.append([r / norm_row for r in row])
+        return norm_dataset
+
+    def fit_data(self):
+        # sets up x_data and class_data
+        dataset = self.read_data()
+        self.x_data = self.normalize_dataset(dataset)
+
+    def two_vec_dist(self, row1, row2):
+        # Compute the distance between two vectors
+        return np.linalg.norm(np.array(row1) - np.array(row2))
+
+    def predict(self, predict_data):
+        # Takes in an unknown array of scan data and returns a classification
+        norm = np.linalg.norm(predict_data)
+        norm_predict_data = [p / norm for p in predict_data]
+        distances = []
+        for x in range(len(self.x_data)):
+            distances.append([self.two_vec_dist(norm_predict_data, self.x_data[x]), x])
+        distances.sort()
+        print(distances)
+        predictions = []
+        for x in range(self.k):
+            predictions.append(self.class_data[distances[x][1]])
+        print(predictions)
+        return Counter(predictions).most_common(1)[0][0]
+
+    def read_data(self):
+        # Put data from csv file into a dataset
+        dataset = []
+        class_dataset = []
+        for d, c in self.datafiles:
+            f = open(d, "r")
+            row = f.readline()
+            while row:  # read until end of file
+                row_data = row.split(",")
+                # last element might be an empty string
+                row_data.pop()
+                row_data = list(map(int, row_data))
+                dataset.append(row_data)
+                class_dataset.append(c)
+                row = f.readline()
+            f.close()
+        self.class_data = class_dataset
+        return dataset
  
         
 # 15cm DMS sensor reading 1350
@@ -298,39 +384,10 @@ if __name__ == "__main__":
 
     control = controller()
 
-    '''
-    map = EECSMap()
-    map.printObstacleMap()
-    
-    
-    control.i = int(input("What is start_i?"))
-    control.j = int(input("What is start_j?"))
-    control.dir = int(input("What is start_dir?"))
+    control.test_scan()
+    #for i in range(20):
+        #control.full_scan()
 
-    i_end = int(input("What is end_i?"))
-    j_end = int(input("What is end_j?"))
-    dir_end = int(input("What is end_dir?"))
-    control.planning(map, [i_end, j_end, dir_end]) 
-    
-    
-    response = setMotorWheelSpeed(5,1023)
-    response = setMotorWheelSpeed(6,1023+930)
-    response = setMotorWheelSpeed(7,1023)
-    response = setMotorWheelSpeed(8,1023+930)
-    '''
-    for i in range(20):
-        control.full_scan()
-    #control.planning(map, [0, 0, 3], [4, 4, 3])
-    #control.move_test(2, 2, 3)
-    #control.turn_left()
-    #control.home()
-    #control.walk_forward()
-    #control.walk_forward_n_units(1)
-    #response = setMotorWheelSpeedSync(4, (5, 6, 7, 8), (1023, 1023+930, 1023, 1023+930))
-    #motor_speed = getMotorWheelSpeed(7)
-    #motor_position = getMotorPositionCommand(7)
-    #rospy.loginfo("Motor 7 Wheel speed: %d\nMotor 7 position: %d\nMotor response %d",motor_speed, motor_position,response)
-    #dt = 0
     while not rospy.is_shutdown():
         '''
         forward_vel = control.recorded_wheel_speed_to_linear_velocity()
