@@ -6,6 +6,9 @@ import csv
 from fw_wrapper.srv import *
 from map import *
 from collections import Counter
+from matplotlib import pyplot as plt
+import matplotlib.patches as mpatches
+
 
 # -----------SERVICE DEFINITION-----------
 # allcmd REQUEST DATA
@@ -340,12 +343,14 @@ class K_Nearest_Neighbors:
         for x in range(len(self.x_data)):
             distances.append([self.two_vec_dist(norm_predict_data, self.x_data[x]), x])
         distances.sort()
-        print(distances)
         predictions = []
         for x in range(self.k):
             predictions.append(self.class_data[distances[x][1]])
         print(predictions)
-        return Counter(predictions).most_common(1)[0][0]
+        prediction = Counter(predictions).most_common(1)[0][0]
+        print(prediction)
+        self.plot_data_predicted(norm_predict_data)
+        return prediction
 
     def read_data(self):
         # Put data from csv file into a dataset
@@ -365,6 +370,44 @@ class K_Nearest_Neighbors:
             f.close()
         self.class_data = class_dataset
         return dataset
+
+    def plot_data(self):
+        fig, ax = plt.subplots(1)
+        for i in range(len(self.x_data)):
+            if (self.class_data[i] == 'concave'):
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='r',marker='o',label='concave')
+            elif(self.class_data[i] =='convex'):
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='b',marker='^',label='covnvex')
+            elif(self.class_data[i] =='straight_wall'):
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='g',marker='*',label='straight_wall')
+        concave_series = mpatches.Patch(color='red', label='concave')
+        convex_series = mpatches.Patch(color='blue', label='convex')
+        straight_wall_series = mpatches.Patch(color='green', label='straight_wall')
+        ax.set_title('Normalized Dataset')
+        ax.set_xlabel('Index')
+        ax.set_ylabel('Normalized DMS Sensor Reading')
+        ax.legend(handles=[concave_series,convex_series,straight_wall_series])
+        plt.show()
+    
+    def plot_data_predicted(self, data_set):
+        fig, ax = plt.subplots(1)
+        for i in range(len(self.x_data)):
+            if (self.class_data[i] == 'concave'):
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='r',marker='o',label='concave')
+            elif(self.class_data[i] =='convex'):
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='b',marker='^',label='convex')
+            elif(self.class_data[i] =='straight_wall'):
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='g',marker='*',label='straight_wall')
+        ax.scatter(range(len(data_set)), data_set,25,color='black',marker='x',label='prediction')
+        concave_series = mpatches.Patch(color='red', label='concave')
+        convex_series = mpatches.Patch(color='blue', label='convex')
+        straight_wall_series = mpatches.Patch(color='green', label='straight_wall')
+        prediction_series = mpatches.Patch(color='black', label='prediction')
+        ax.set_title('Normalized Dataset with Prediction')
+        ax.set_xlabel('Index')
+        ax.set_ylabel('Normalized DMS Sensor Reading')
+        ax.legend(handles=[concave_series,convex_series,straight_wall_series,prediction_series])
+        plt.show()
  
         
 # 15cm DMS sensor reading 1350
@@ -385,6 +428,9 @@ if __name__ == "__main__":
     control = controller()
 
     control.test_scan()
+    #knn = K_Nearest_Neighbors()
+    #knn.fit_data()
+    #knn.plot_data()
     #for i in range(20):
         #control.full_scan()
 
