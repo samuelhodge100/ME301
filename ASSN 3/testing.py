@@ -1,6 +1,6 @@
 import numpy as np
 from collections import Counter
-
+from matplotlib import pyplot as plt
 
 class K_Nearest_Neighbors:
     def __init__(self):
@@ -59,7 +59,7 @@ class K_Nearest_Neighbors:
         class_dataset = []
         for d, c in self.datafiles:
             f = open(
-                "C:/Users/liban/Desktop/School stuff/CS 301/ME301/ASSN 3/" + d, "r"
+                "./" + d, "r"
             )
             row = f.readline()
             while row:  # read until end of file
@@ -72,7 +72,19 @@ class K_Nearest_Neighbors:
                 row = f.readline()
             f.close()
         self.class_data = class_dataset
+        print(dataset[1])
         return dataset
+    
+    def plot_data(self):
+        fig, ax = plt.subplots(1)
+        for i in range(len(self.x_data)):
+            if (self.class_data[i] == 'concave'):
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='r',marker='o')
+            elif(self.class_data[i] =='convex'):
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='b',marker='^')
+            elif(self.class_data[i] =='straight_wall'):
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='g',marker='*')
+        plt.show()
 
 
 # files are [concave_57D,convex_57D,straight_wall]_[11cm,16cm,22cm]_wall_data.csv
@@ -82,6 +94,7 @@ k_nearest_neighbors = K_Nearest_Neighbors()
 # )
 # k_nearest_neighbors.normalize_dataset(dataset)
 k_nearest_neighbors.fit_data()
+"""
 print(
     k_nearest_neighbors.predict(
         [
@@ -118,3 +131,6 @@ print(
         ]
     )
 )
+"""
+
+k_nearest_neighbors.plot_data()
