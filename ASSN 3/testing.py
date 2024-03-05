@@ -1,6 +1,7 @@
 import numpy as np
 from collections import Counter
 from matplotlib import pyplot as plt
+import matplotlib.patches as mpatches
 
 class K_Nearest_Neighbors:
     def __init__(self):
@@ -79,11 +80,18 @@ class K_Nearest_Neighbors:
         fig, ax = plt.subplots(1)
         for i in range(len(self.x_data)):
             if (self.class_data[i] == 'concave'):
-                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='r',marker='o')
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='r',marker='o',label='concave')
             elif(self.class_data[i] =='convex'):
-                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='b',marker='^')
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='b',marker='^',label='covnvex')
             elif(self.class_data[i] =='straight_wall'):
-                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='g',marker='*')
+                ax.scatter(range(len(self.x_data[i])),self.x_data[i],5,color='g',marker='*',label='straight_wall')
+        concave_series = mpatches.Patch(color='red', label='concave')
+        convex_series = mpatches.Patch(color='blue', label='convex')
+        straight_wall_series = mpatches.Patch(color='green', label='straight_wall')
+        ax.set_title('Normalized Dataset')
+        ax.set_xlabel('Index')
+        ax.set_ylabel('Normalized DMS Sensor Reading')
+        ax.legend(handles=[concave_series,convex_series,straight_wall_series])
         plt.show()
 
 
